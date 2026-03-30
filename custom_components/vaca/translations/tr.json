@@ -82,6 +82,9 @@
             "wake_word_threshold": {
                 "name": "Uyandırma kelimesi eşiği"
             },
+            "stop_word_threshold": {
+                "name": "Durdurma kelimesi eşiği"
+            },
             "zoom_level": {
                 "name": "Yakınlaştırma seviyesi"
             }

@@ -85,6 +85,9 @@
             "wake_word_threshold": {
                 "name": "Weckwort-Schwellenwert"
             },
+            "stop_word_threshold": {
+                "name": "Stopwort-Schwellenwert"
+            },
             "zoom_level": {
                 "name": "Zoomstufe"
             }

@@ -79,6 +79,9 @@
             "wake_word_threshold": {
                 "name": "Wake word threshold"
             },
+            "stop_word_threshold": {
+                "name": "Stop word threshold"
+            },
             "zoom_level": {
                 "name": "Zoom level"
             },

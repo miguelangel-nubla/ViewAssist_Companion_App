@@ -25,6 +25,9 @@ _LOGGER = logging.getLogger(__name__)
 _MAX_MIC_GAIN: Final = 20
 _MIN_SOUND_VOLUME: Final = 0
 
+# Populated from the companion app capabilities (bundled model JSON).
+_MWW_AUTHOR_DEFAULTS_KEY = "microwakeword_author_defaults"
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -70,6 +73,7 @@ async def async_setup_entry(
         VACADuckingVolumeNumber(device),
         VACAScreenBrightnessNumber(device),
         VACAWakeWordThresholdNumber(device),
+        VACAStopWordThresholdNumber(device),
         VACAZoomLevelNumber(device),
     ]
 
@@ -337,18 +341,147 @@ class VACAScreenBrightnessNumber(BaseFeedbackNumber):
 
 
 class VACAWakeWordThresholdNumber(BaseNumberEntity):
-    """Entity to represent wake word trigger threshold."""
+    """Entity to represent wake word trigger threshold as a percentage (0-100)."""
 
     entity_description = NumberEntityDescription(
         key="wake_word_threshold",
         translation_key="wake_word_threshold",
         icon="mdi:account-voice",
+        native_unit_of_measurement=PERCENTAGE,
         entity_category=EntityCategory.CONFIG,
     )
     _attr_native_min_value: float = 0.0
-    _attr_native_max_value: float | None = 10.0
+    _attr_native_max_value: float | None = 100.0
     _attr_native_step: float = 1.0
-    _attr_native_value: float | None = 6.0
+    _attr_native_value: float | None = 50.0
+    _author_default: int | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to Home Assistant."""
+        self._update_author_default()
+        await super().async_added_to_hass()
+
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{DOMAIN}_{self._device.device_id}_settings_update",
+                self._on_settings_update,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{DOMAIN}_{self._device.device_id}_capabilities_update",
+                self._on_capabilities_update,
+            )
+        )
+
+    @callback
+    def _on_capabilities_update(self, data: dict[str, Any] | None) -> None:
+        """Refresh author default when device sends updated capabilities."""
+        self._update_author_default()
+        self.async_write_ha_state()
+
+    @callback
+    def _on_settings_update(self, data: dict[str, Any] | None) -> None:
+        """Update author default when wake word changes."""
+        if not data:
+            return
+        settings = data.get("settings")
+        if isinstance(settings, dict) and "wake_word" in settings:
+            self._update_author_default()
+            self.async_write_ha_state()
+
+    def _update_author_default(self) -> None:
+        """Look up the author default for the currently selected wake word."""
+        self._author_default = None
+        if not self._device.custom_settings:
+            return
+        wake_word = self._device.custom_settings.get("wake_word")
+        if not wake_word:
+            return
+        caps = self._device.capabilities
+        if not caps:
+            return
+        defaults = caps.get(_MWW_AUTHOR_DEFAULTS_KEY)
+        if not isinstance(defaults, dict):
+            return
+        raw = defaults.get(wake_word)
+        if raw is None:
+            return
+        try:
+            self._author_default = int(float(raw))
+        except (ValueError, TypeError):
+            self._author_default = None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        attrs: dict[str, Any] = {}
+        if self._author_default is not None:
+            attrs["author_default"] = self._author_default
+        return attrs
+
+
+class VACAStopWordThresholdNumber(BaseNumberEntity):
+    """Entity for MicroWakeWord stop-word trigger threshold as a percentage (0–100)."""
+
+    entity_description = NumberEntityDescription(
+        key="stop_word_threshold",
+        translation_key="stop_word_threshold",
+        icon="mdi:stop-circle",
+        native_unit_of_measurement=PERCENTAGE,
+        entity_category=EntityCategory.CONFIG,
+    )
+    _attr_native_min_value: float = 0.0
+    _attr_native_max_value: float | None = 100.0
+    _attr_native_step: float = 1.0
+    _attr_native_value: float | None = 50.0
+    _author_default: int | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to Home Assistant."""
+        self._update_author_default()
+        await super().async_added_to_hass()
+
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{DOMAIN}_{self._device.device_id}_capabilities_update",
+                self._on_capabilities_update,
+            )
+        )
+
+    @callback
+    def _on_capabilities_update(self, data: dict[str, Any] | None) -> None:
+        """Refresh author default when device sends updated capabilities."""
+        self._update_author_default()
+        self.async_write_ha_state()
+
+    def _update_author_default(self) -> None:
+        """Author-recommended threshold for the bundled stop model (id: stop)."""
+        self._author_default = None
+        caps = self._device.capabilities
+        if not caps:
+            return
+        defaults = caps.get(_MWW_AUTHOR_DEFAULTS_KEY)
+        if not isinstance(defaults, dict):
+            return
+        raw = defaults.get("stop")
+        if raw is None:
+            return
+        try:
+            self._author_default = int(float(raw))
+        except (ValueError, TypeError):
+            self._author_default = None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        attrs: dict[str, Any] = {}
+        if self._author_default is not None:
+            attrs["author_default"] = self._author_default
+        return attrs
 
 
 class VACAZoomLevelNumber(BaseNumberEntity):
